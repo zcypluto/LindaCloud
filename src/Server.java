@@ -91,10 +91,7 @@ public class Server{
 
     }
 
-    //back up
-    private void Backup(){
 
-    }
 
     // Linda command: Add function
     private void lindaAddcommand(String cmd) {

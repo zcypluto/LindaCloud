@@ -112,7 +112,7 @@ public class ServerInfoList {
         return sl;
     }
 
-    /**convert nets file into a string**/
+    /**convert nets file into a string wefw**/
 
     public static String GetNetsContent(String login, String hostname) {
         try {

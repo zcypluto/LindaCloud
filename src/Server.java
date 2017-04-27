@@ -86,11 +86,8 @@ public class Server{
             serverSocket.close();
         }
     }
-    
-    //Linda Reboot host
-    private void reboot(){
 
-    }
+  
     //Linda Delete command
     private void lindaDeletecommand(String cmd){
 

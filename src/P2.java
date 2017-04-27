@@ -1,7 +1,7 @@
 /**
  * Created by Plutorian1 on 4/6/17.
  */
-public class P1 {
+public class P2 {
     public static void main(String[] args) {
         String login = "czhang3";
         Server srv = new Server();

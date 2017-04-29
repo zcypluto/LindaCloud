@@ -9,11 +9,10 @@ import java.nio.file.Paths;
  */
 public class Tuples {
 
-    // TODO: dont overwrite context, should add on
     public void writetuple(String tuple, String login, String hostname) {
         BufferedWriter bw = null;
         String path = "/tmp/" + login + "/linda/" + hostname + "/tuples";
-        //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P1\\"+ login +"\\linda\\" + hostname +"\\tuples";
+        //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tuples";
 
         File file = new File(path);
         if (!file.exists()) {
@@ -33,6 +32,7 @@ public class Tuples {
         } catch (IOException e){
             System.out.println("Error: can not change folder/files mode" + path);
         }
+
         try {
             //bw = new BufferedWriter(new FileWriter("/tmp/" + login + "/linda/" + hostname + "/nets"));
             bw = new BufferedWriter(new FileWriter(path, true));
@@ -114,7 +114,7 @@ public class Tuples {
     // get specific host information by search target data: only for "rd" command
     public String readtuple(String targetdata, String login, String hostname) {
         String path = "/tmp/" + login + "/linda/" + hostname + "/tuples";
-        //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P1\\"+ login +"\\linda\\" + hostname +"\\tuples";
+        //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tuples";
         boolean bvarmatch = (targetdata.contains("?") && targetdata.contains(":")) ? true : false;
 
         // check file exist or not
@@ -146,8 +146,8 @@ public class Tuples {
     public void deletetuple(String targetdata, String login, String hostname){
         String path = "/tmp/" + login + "/linda/" + hostname + "/tuples";
         String tmppath = "/tmp/" + login + "/linda/" + hostname + "/tmptuples";
-        //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P1\\"+ login +"\\linda\\" + hostname +"\\tuples";
-        //String tmppath = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P1\\"+ login +"\\linda\\" + hostname +"\\tmptuples";
+        //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tuples";
+        //String tmppath = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tmptuples";
         File inputfile = new File(path);
         File tmpfile = new File(tmppath);
 
@@ -180,25 +180,25 @@ public class Tuples {
     }
 
     public static List<String> GetTuplesContent(String login, String hostname) {
-
         String path = "/tmp/" + login + "/linda/" + hostname + "/tuples";
+        //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tuples";
         File file = new File(path);
         if (!file.exists()) {
             return null;
         }
+        List<String> tuples = new ArrayList<>();
         // check tuple content
         try {
             FileReader fReader = new FileReader(path);
             BufferedReader bReader = new BufferedReader(fReader);
             String line = "";
-            List<String> tp=new ArrayList<>();
             while ((line = bReader.readLine()) != null) {
-               tp.add(line);
+                tuples.add(line);
             }
         } catch (IOException e) {
             System.out.println("Error: cannot open file: " + path);
         }
-        return null;
+        return tuples;
     }
 
     public List<String> readtuple(String login,String hostname) throws IOException{

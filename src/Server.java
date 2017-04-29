@@ -21,7 +21,6 @@ public class Server{
     private ServerSocket serverSocket;
     private MD5Digest md5Dig;
     private Map<Integer, String> hostMap;
-    private List<String> nets_list=new ArrayList<>();
     private String acknowledge;
 
     public Server() {
@@ -35,8 +34,8 @@ public class Server{
         acknowledge = null;
     }
 
-    /* 1. capture current ip and valid port
-     * 2. while for command
+    /* 1. Capture current ip and valid port
+     * 2. while loop for command
      */
     public void start(String host, String login) throws IOException {
         hostName = host;
@@ -87,13 +86,131 @@ public class Server{
         }
     }
 
-  
-    //Linda Delete command
-    private void lindaDeletecommand(String cmd){
+    // Distribute all hosts' tuples
+    private boolean DistributeTuple(boolean isServer){
+        // 1. check local tuple and distribute
+        List<String> tuples = tuplesInfo.GetTuplesContent(loginName, hostName);
+        if (tuples != null) {
+            //System.out.println("[Info] distribute - check tuples in " + hostName);
+            for (int j = 0; j < tuples.size(); j++) {
+                String tmp = tuples.get(j);
+                tuplesInfo.deletetuple(tmp, loginName, hostName); //remove original tuple
+                lindaOutcommand(tmp); // re-distribute tuple one by one
+            }
+        }
 
+        // 2. notify other net to distribute if host is server
+        if (!isServer) {
+            //System.out.println("[Info] " + hostName + " is done for tuples distribution");
+            return true;
+        }
+        String allhosts = srvInfo.GetNetsContent(loginName, hostName);
+        if (allhosts == null) {
+            System.out.println("Error: cannot retrieve nets information on " + hostName);
+            return false;
+        }
+        String[] allhost = allhosts.split("\n");
+        for(int i = 0; i < allhost.length; i++){
+            String[] hostinfo = allhost[i].split(",");
+            if (!hostinfo[0].equals(hostName)) {
+                //System.out.println("[Info] notify " + hostinfo[0] + " to re-distribute tuples");
+                sendAndSync(false, "[Disadd]", hostinfo[1], Integer.valueOf(hostinfo[2]));
+            }
+        }
+        return true;
     }
 
+    // Update net file and distribute all tuples
+    private void updateNetAndTuples() {
+        // write to net file
+        srvInfo.writenets(hostList, loginName, hostName);
+        try {
+            String slcontent = srvInfo.GetNetsContent(loginName, hostName);
+            slcontent = slcontent.replaceAll("\n", "\t"); // replace \n to \t
+            List<ServerInfo> sl = srvInfo.loadnets(loginName, hostName);
+            for(ServerInfo s : sl){
+                if(s.getIP().equals(hostIP) && (s.getPORT() == hostPort)){
+                    continue;
+                }
+                Socket sk = new Socket(s.getIP(), s.getPORT());
+                PrintWriter out = new PrintWriter(sk.getOutputStream(),true);
+                out.print("[add]" + slcontent);// call add function
+                //out.print(slcontent);
+                out.close();
+            }
+        } catch (IOException e){
+            System.out.println("unable to create nets content");
+        }
 
+        // Distribute tuples when adding new machines
+        // TODO: workaround wait for a while: ensure all hosts net is created
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            System.out.println("Error: " + hostName + " can not sleep");
+        }
+        DistributeTuple(true);
+    }
+
+    // Linda Delete command
+    private void lindaDeletecommand(String cmd){
+        String msg = cmd.substring(6, cmd.length()); //remove delete
+        msg = msg.replaceAll("[\\(\\)\\s]+", ""); //remove white space
+        String[] removehostslist = msg.split(",");
+        HashMap<String, ServerInfo> map = new HashMap<>();
+
+        if (hostList.isEmpty()) {
+            System.out.println("Error: cannot delete host because of no host record");
+            return;
+        }
+
+        for (int i = 0; i < hostList.size(); i++) {
+            ServerInfo sinfo = hostList.get(i);
+            map.put(sinfo.getName(), sinfo);
+        }
+        // remove host from the hostList and send delete message to target host
+        List<ServerInfo> slist = srvInfo.loadnets(loginName, hostName);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < removehostslist.length; i++) {
+            String name = removehostslist[i];
+            if (map.containsKey(name)) {
+                ServerInfo sinfo = map.get(name);
+                // filter delete host information
+                for (int j = 0; j < slist.size(); j++) {
+                    if (!sinfo.getName().equals(slist.get(j).getName())) {
+                        sb.append(slist.get(j).getName() + ",");
+                        sb.append(slist.get(j).getIP() + ",");
+                        sb.append(slist.get(j).getPORT() + "\t");
+                    }
+                }
+                // remove host list record
+                hostList.remove(map.get(name));
+            }
+        }
+
+        // update net files
+        for (int i = 0; i < removehostslist.length; i++) {
+            String name = removehostslist[i];
+            boolean isdelete = false;
+            if (map.containsKey(name)) {
+                ServerInfo sinfo = map.get(name);
+                isdelete = sendAndSync(true, "[Disdel][" + hostName + "]" + sb.toString(), sinfo.getIP(), sinfo.getPORT());
+                if (!isdelete) {
+                    System.out.println("Error: cannot delete " + sinfo.getName());
+                }
+            }
+        }
+        updateHostIdNameMap();
+
+        srvInfo.writenets(hostList, loginName, hostName);
+        // debug
+        /*
+        for (int i = 0; i < hostList.size(); i++) {
+            ServerInfo host = hostList.get(i);
+            System.out.println(host.getName() + ":" + host.getPORT());
+        }
+        */
+    }
 
     // Linda command: Add function
     private void lindaAddcommand(String cmd) {
@@ -103,6 +220,11 @@ public class Server{
         String host = null;
         String ip = null;
         int port = 0, cnt = 0;
+
+        // add self net information once
+        if (hostList.isEmpty()) {
+            hostList.add(new ServerInfo(hostName, hostIP, hostPort));
+        }
         for (int i = 0; i < msg.length(); i++) {
             char c = msg.charAt(i);
             if (c != '(' && c != ')' && c != ',' && c != ' ') {
@@ -111,7 +233,10 @@ public class Server{
             if (c == ',') {
                 if (cnt == 0) {
                     host = sb.toString();
-                    nets_list.add(host);
+                    if (host.equals(hostName)) {
+                        System.out.println("Error: " + host + " is used, rename it");
+                        return;
+                    }
                     sb.setLength(0);
                     cnt++;
                 } else if (cnt == 1) {
@@ -125,60 +250,22 @@ public class Server{
                 cnt++;
             }
             if (cnt == 3) {
+                // add other host net information
                 hostList.add(new ServerInfo(host, ip, port));
                 cnt = 0;
             }
         }
-        hostList.add(new ServerInfo(hostName,hostIP,hostPort));
-
         hostIdNameMap();
-
         // debug
         /*
         for (ServerInfo info : hostList) {
            System.out.println(info.getName() + ", " + info.getIP() + ", " + info.getPORT());
         }
         */
-        // write to net file
-        srvInfo.writenets(hostList, loginName, hostName);
-        try {
-            String slcontent = srvInfo.GetNetsContent(loginName, hostName);
-            slcontent = slcontent.replaceAll("\n", "\t"); // replace \n to \t
-            List<ServerInfo> sl=srvInfo.loadnets(loginName,hostName);
-            for(ServerInfo s:sl){
-                if(s.getIP().equals(hostIP)&&s.getPORT()==hostPort){
-                    continue;
-                }
-                Socket sk=new Socket(s.getIP(),s.getPORT());
-                PrintWriter out=new PrintWriter(sk.getOutputStream(),true);
-                out.print("[add]"+slcontent);// call add function
-                //out.print(slcontent);
-                out.close();
-            }
-        }catch (IOException e){
-            System.out.println("unable to create nets content");
-        }
-
-        DistributeTuple();
-
-
+        updateNetAndTuples();
     }
 
-    private void DistributeTuple(){
-        String allhosts = srvInfo.GetNetsContent(loginName, hostName);
-        String[] allhost = allhosts.split("\n");
-        for(int i=0;i<allhost.length;i++){
-            String[] hostinfo = allhost[i].split(",");
-            List<String> tuples=tuplesInfo.GetTuplesContent(loginName,hostinfo[0]);
-            for(int j=0;j<tuples.size();j++){
-                String tmp=tuples.get(j);
-                lindaOutcommand(tmp);
-
-            }
-        }
-    }
-
-    // check data type: String, Integer or Float
+    // Check data type: String, Integer or Float
     private String checkType(String in) {
         String type = "";
         // check String first
@@ -195,7 +282,7 @@ public class Server{
         return type;
     }
 
-    // send messages to server and check feedback
+    // Send messages to server and check feedback
     private boolean sendAndSync(boolean sync, String msg, String ip, int port) {
         // send message
         try {
@@ -207,7 +294,7 @@ public class Server{
             out.close();
             socket.close();
         } catch (IOException e) {
-            System.out.println("Error: cannot open socket");
+            System.out.println("Error: cannot open socket + " + ip + ":" + port);
             return false;
         }
 
@@ -241,13 +328,21 @@ public class Server{
         }
         hostNum = hostList.size();
     }
-    //Hashmap for MD5 hashcode
+
+    // Refresh Hash map if delete host information
+    private void updateHostIdNameMap() {
+        hostMap.clear();
+        hostIdNameMap();
+    }
+
+    // Hash map for MD5 hashcode
     private int calhostID(int tuplehash){
-        int hostID=0;
-        int numofslots=hostList.size();
+        int hostID = 0;
+        int numofslots = hostList.size();
         int slots=(int)Math.pow(2,16)-1;
         int slotavg=slots/numofslots;
-        for(int i=0;i<hostList.size();i++) {
+
+        for(int i = 0; i < hostList.size(); i++) {
             if (tuplehash > slotavg) {
                 slotavg += slotavg;
                 continue;
@@ -259,7 +354,7 @@ public class Server{
         return hostID;
     }
 
-    // create socket and send the command to other host
+    // Create socket and send the command to other host
     private boolean sendMessages(boolean sync, String msg, int hostid) {
         // hash to determine a target host
         if (hostid == -1) {
@@ -339,14 +434,15 @@ public class Server{
         }
         return sb.toString();
     }
+
     // Linda command: Out function
     private void lindaOutcommand(String cmd) {
         String msg = lindaBasic(cmd);
 
         int tuplecode = md5Dig.HashFunc(msg);
-        System.out.println("tuplecode ="+tuplecode);
-        int hostid=calhostID(tuplecode);
-        System.out.println("hostid ="+hostid);
+        int hostid = calhostID(tuplecode);
+        System.out.println("tuplecode =" + tuplecode);
+        System.out.println("hostid =" + hostid);
         // send message
         if (!sendMessages(false, "[out][" + hostName + "]" + msg, hostid) ) {
             System.out.println("Error: Out command failed");
@@ -357,7 +453,7 @@ public class Server{
     private void lindaIncommand(String cmd) {
         String msg = lindaBasic(cmd);
         int tuplecode = md5Dig.HashFunc(msg);
-        int hostid=calhostID(tuplecode);
+        int hostid = calhostID(tuplecode);
         // send message
         if(!sendMessages(true, "[in][" + hostName + "]"  + msg, hostid)){
             System.out.println("Error: in command failed");
@@ -368,14 +464,14 @@ public class Server{
     private void lindaRdcommand(String cmd) {
         String msg = lindaBasic(cmd);
         int tuplecode = md5Dig.HashFunc(msg);
-        int hostid=calhostID(tuplecode);
+        int hostid = calhostID(tuplecode);
         // send message
         if (!sendMessages(true, "[rd][" + hostName + "]" + msg, hostid) ) {
             System.out.println("Error: Rd command failed");
         }
     }
 
-    // process command-line command from local host
+    // Process command-line command from local host
     private void lindaOthercommand(String cmd) {
         String msg = cmd.replaceAll("\\s+", ""); //remove white space
         if (cmd.startsWith("out") && msg.length() > 5) { //assume at least out()
@@ -405,7 +501,7 @@ public class Server{
         }
         return sb.toString();
     }
-    // process received command from other hosts
+    // Process received command from other hosts
     private void receivedcommand(String cmd, Socket client) {
         String msg = cmd.replaceAll("S_", "\"");
         msg = msg.replaceAll("F_", "");
@@ -417,10 +513,12 @@ public class Server{
             msg = msg.substring(5, msg.length()); //remove [out]
             clienthost = gethostname(msg);
             msg = msg.substring(clienthost.length() + 2, msg.length()); //remove [hostname]
+            System.out.println("\n<receiver>put tuple (" + msg + ") on " + hostIP);
+            System.out.print("linda> ");
             tuplesInfo.writetuple(msg, loginName, hostName);
             clientInfo = srvInfo.readnets(loginName, hostName, clienthost);
             if (clientInfo == null) {
-                System.out.println("Error: can not find client information - " + clienthost);
+                System.out.println("Error: [out] can not find client information - " + clienthost);
                 return;
             }
             //sendAndSync protocol: fail, success
@@ -431,7 +529,7 @@ public class Server{
             msg = msg.substring(clienthost.length() + 2, msg.length()); //remove [hostname]
             clientInfo = srvInfo.readnets(loginName, hostName, clienthost);
             if (clientInfo == null) {
-                System.out.println("Error: can not find client information - " + clienthost);
+                System.out.println("Error: [rd] can not find client information - " + clienthost);
                 return;
             }
             String data = tuplesInfo.readtuple(msg, loginName, hostName);
@@ -443,7 +541,7 @@ public class Server{
             msg = msg.substring(clienthost.length() + 2, msg.length()); //remove [hostname]
             clientInfo = srvInfo.readnets(loginName, hostName, clienthost);
             if (clientInfo == null) {
-                System.out.println("Error: can not find client information - " + clienthost);
+                System.out.println("Error: [in] can not find client information - " + clienthost);
                 return;
             }
             String data = tuplesInfo.readtuple(msg, loginName, hostName);
@@ -455,6 +553,7 @@ public class Server{
         } else if (msg.startsWith("[add]")){
             msg = msg.substring(5, msg.length());
             String[] hostinfos = msg.split("\t");
+            hostList.clear(); // remove original net information
             for (int i = 0; i < hostinfos.length; i++) {
                 String[] hostinfo = hostinfos[i].split(",");
                 hostList.add(new ServerInfo(hostinfo[0], hostinfo[1], Integer.valueOf(hostinfo[2])));
@@ -463,6 +562,27 @@ public class Server{
             srvInfo.writenets(hostList, loginName, hostName);
         } else if (msg.startsWith("success") || msg.startsWith("fail")) {
             acknowledge = msg;
+        } else if (msg.startsWith("[Disadd]")) {
+            DistributeTuple(false);
+        } else if (msg.startsWith("[Disdel]")) {
+            msg = msg.substring(8, msg.length());
+            clienthost = gethostname(msg);
+            msg = msg.substring(clienthost.length() + 2, msg.length()); //remove [hostname]
+            String[] hostinfos = msg.split("\t");
+            hostList.clear(); // remove original net information
+            for (int i = 0; i < hostinfos.length; i++) {
+                String[] hostinfo = hostinfos[i].split(",");
+                hostList.add(new ServerInfo(hostinfo[0], hostinfo[1], Integer.valueOf(hostinfo[2])));
+            }
+            srvInfo.writenets(hostList, loginName, hostName);
+            clientInfo = srvInfo.readnets(loginName, hostName, clienthost);
+            if (clientInfo == null) {
+                System.out.println("Error: [delete] can not find server information - " + clienthost);
+                return;
+            }
+            updateHostIdNameMap();
+            DistributeTuple(false);
+            sendAndSync(false, "success", clientInfo.getIP(), clientInfo.getPORT());
         } else {
             System.out.println("Other: " + msg);
         }
@@ -482,6 +602,8 @@ public class Server{
                         String msg = reader.readLine();
                         if (msg.startsWith("add")) {
                             lindaAddcommand(msg);
+                        } else if (msg.startsWith("delete")){
+                            lindaDeletecommand(msg);
                         } else if (msg.equals("exit")) {
                             System.out.println("Bye");
                             System.exit(0);
@@ -497,7 +619,7 @@ public class Server{
         }).start();
     }
 
-    // receive client's messages
+    // Receive client's messages
     private void invoke(final Socket client) throws IOException{
         new Thread(new Runnable() {
             @Override

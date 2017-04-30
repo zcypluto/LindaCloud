@@ -9,11 +9,13 @@ import java.nio.file.Paths;
  */
 public class Tuples {
 
-    public void writetuple(String tuple, String login, String hostname) {
+    public void writetuple(String tuple, String login, String hostname, boolean isbackup, String bkhostname) {
         BufferedWriter bw = null;
-        String path = "/tmp/" + login + "/linda/" + hostname + "/tuples";
+        String htpath = "/tmp/" + login + "/linda/" + hostname + "/tuples";
+        String bkpath = "/tmp/" + login + "/linda/" + hostname + "/"+ bkhostname +"_tuples";
         //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tuples";
 
+        String path = isbackup ? bkpath : htpath;
         File file = new File(path);
         if (!file.exists()) {
             file.getParentFile().mkdirs();
@@ -44,18 +46,6 @@ public class Tuples {
         } catch (IOException e) {
             System.out.println("Error: Cannot write tuples files");
         }
-
-        /*String path = "/tmp/" + login + "/linda/" + hostname + "/tuples";
-        //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P1\\"+ login +"\\linda\\" + hostname +"\\tuples";
-        FileWriter fw = null;
-        File filename = new File(path);
-        try{
-            fw = new FileWriter(filename,true);
-            fw.write(tuple);
-            fw.flush();
-        } catch (Exception e){
-            System.out.println("Error: cannot write to tuple file");
-        }*/
     }
 
     // check data type: String, Integer or Float
@@ -112,11 +102,13 @@ public class Tuples {
     }
 
     // get specific host information by search target data: only for "rd" command
-    public String readtuple(String targetdata, String login, String hostname) {
-        String path = "/tmp/" + login + "/linda/" + hostname + "/tuples";
+    public String readtuple(String targetdata, String login, String hostname, boolean isback, String bkhostname) {
+        String htpath = "/tmp/" + login + "/linda/" + hostname + "/tuples";
+        String bkpath = "/tmp/" + login + "/linda/" + hostname + "/"+ bkhostname +"_tuples";
         //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tuples";
         boolean bvarmatch = (targetdata.contains("?") && targetdata.contains(":")) ? true : false;
 
+        String path = isback ? bkpath : htpath;
         // check file exist or not
         File file = new File(path);
         if (!file.exists()) {
@@ -143,11 +135,14 @@ public class Tuples {
         return null;
     }
 
-    public void deletetuple(String targetdata, String login, String hostname){
-        String path = "/tmp/" + login + "/linda/" + hostname + "/tuples";
+    public void deletetuple(String targetdata, String login, String hostname, boolean isback, String bkhostname){
+        String htpath = "/tmp/" + login + "/linda/" + hostname + "/tuples";
+        String bkpath = "/tmp/" + login + "/linda/" + hostname + "/"+ bkhostname +"_tuples";
         String tmppath = "/tmp/" + login + "/linda/" + hostname + "/tmptuples";
         //String path = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tuples";
         //String tmppath = "C:\\Users\\user\\CloudComputing\\Cloud_Computing_P2\\"+ login +"\\linda\\" + hostname +"\\tmptuples";
+
+        String path = isback ? bkpath : htpath;
         File inputfile = new File(path);
         File tmpfile = new File(tmppath);
 
@@ -161,8 +156,8 @@ public class Tuples {
             String currentLine;
             int cnt=0;
 
-            while ((currentLine=reader.readLine())!=null){
-                if(currentLine.equals(lineToRemove)&&cnt==0){
+            while ((currentLine = reader.readLine()) != null){
+                if(currentLine.equals(lineToRemove) && cnt == 0){
                     cnt++;
                     continue;
                 }else{
@@ -201,6 +196,7 @@ public class Tuples {
         return tuples;
     }
 
+
     public List<String> readtuple(String login,String hostname) throws IOException{
         BufferedReader br=new BufferedReader(new FileReader("/tmp/" + login + "/linda/" + hostname + "/tuples"));
         List<String> tuples=new ArrayList<>();
@@ -209,5 +205,17 @@ public class Tuples {
             tuples.add(line);
         }
         return tuples;
+    }
+
+    // clean all information
+    public void clean(String login, String hostname, boolean isbackup, String bkhostname) {
+        String htpath = "/tmp/" + login + "/linda/" + hostname + "/tuples";
+        String bkpath = "/tmp/" + login + "/linda/" + hostname + "/"+ bkhostname +"_tuples";
+
+        String path = isbackup ? bkpath : htpath;
+        File file = new File(path);
+        if (file.exists()) {
+            file.delete();
+        }
     }
 }

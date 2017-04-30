@@ -100,6 +100,7 @@ public class ServerInfoList {
         } catch (IOException e) {
             System.out.println("Error: cannot open file: " + path);
         }
+        System.out.println("Error: cannot find " + targethost + " on " + path);
         return null;
     }
 
@@ -133,5 +134,14 @@ public class ServerInfoList {
             e.printStackTrace();
         }
         return null;
+    }
+
+    // clean all information
+    public void clean(String login, String hostname) {
+        String path = "/tmp/" + login + "/linda/" + hostname + "/nets";
+        File file = new File(path);
+        if (file.exists()) {
+            file.delete();
+        }
     }
 }
